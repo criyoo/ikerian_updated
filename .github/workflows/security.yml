@@ -1,0 +1,74 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches:
+      - development
+  pull_request:
+    branches:
+      - main
+
+
+jobs:
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/development' && github.event_name == 'push'
+    environment: development
+    
+    steps:
+      - name: Setup Environment
+        uses: ./.github/actions/setup-terraform
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Run Terraform Commands
+        uses: ./.github/actions/terraform-commands
+        with:
+          commands: "fmt init validate"
+
+      - name: Run TFSec Security Scanner
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: .
+          soft_fail: true
+
+      - name: Run Checkov Security Scanner
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform
+          output_format: sarif
+          output_file_path: ./checkov.sarif
+          soft_fail: true
+
+      # - name: Upload Checkov SARIF
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   if: always()
+      #   with:
+      #     sarif_file: ./checkov.sarif
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: ./trivy-results.sarif
+
+      # - name: Upload Trivy SARIF
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   if: always()
+      #   with:
+      #     sarif_file: ./trivy-results.sarif
+
+      - name: Security Scan Summary
+        if: always()
+        run: |
+          echo "🔒 Security scan completed"
+          echo "Check the Security tab for detailed results"

@@ -1,0 +1,347 @@
+name: Deploy Ikerian AWS Data Pipeline
+
+on:
+  push:
+    branches:
+      - development   # Development deployments only
+  pull_request:
+    types: [opened, synchronize, closed]
+    branches:
+      - main      # Production deployments only
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '**/*.py'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'Makefile'
+
+permissions:
+  contents: read
+
+jobs:
+  # Security and validation checks
+  security-scan:
+    name: Security Scan & Validation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+    
+    steps:
+      - name: Setup Environment
+        uses: ./.github/actions/setup-terraform
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run Security Commands
+        uses: ./.github/actions/terraform-commands
+        with:
+          commands: "fmt init validate"
+
+      - name: Run TFSec Security Scanner
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: .
+
+      - name: Run Checkov Security Scanner
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov.sarif
+
+      - name: Upload Checkov SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov.sarif
+
+# Development environment deployment
+  plan-dev:
+    name: Plan for Development Deployment
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/development' && github.event_name == 'push'
+    environment: development
+    
+    steps:
+      - name: Setup Environment
+        uses: ./.github/actions/setup-terraform
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Select Terraform Workspace
+        run: terraform workspace select dev || terraform workspace new dev
+
+      - name: Run Terraform Commands
+        uses: ./.github/actions/terraform-commands
+        with:
+          commands: "init plan"
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terraform-plan-dev
+          path: tfplan
+
+      - name: Notify Plan Success
+        if: success()
+        run: |
+          echo "🚀 Development plan completed successfully!"
+          echo "Environment: Development"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+
+  # # Development environment deployment
+  # deploy-dev:
+  #   name: Deploy to Development
+  #   runs-on: ubuntu-latest
+  #   if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+  #   environment: development
+    
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #         aws-region: ${{ env.AWS_REGION }}
+
+  #     - name: Setup Terraform
+  #       uses: hashicorp/setup-terraform@v3
+  #       with:
+  #         terraform_version: ${{ env.TF_VERSION }}
+
+  #     - name: Setup Python
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
+
+  #     - name: Install Make
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y make
+
+  #     - name: Install Python dependencies
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install boto3
+
+  #     - name: Select Terraform Workspace
+  #       run: terraform workspace select dev || terraform workspace new dev
+  #       working-directory: .
+
+  #     - name: Terraform Format and Init
+  #       run: make fmt && make init
+  #       working-directory: .
+
+  #     - name: Terraform Plan
+  #       run: make plan
+  #       working-directory: .
+
+  #     - name: Terraform Apply
+  #       run: make apply
+  #       working-directory: .
+
+  #     - name: Verify Deployment
+  #       run: |
+  #         echo "🔍 Verifying deployment..."
+          
+  #         # Check S3 buckets
+  #         RAW_BUCKET=$(aws s3 ls | grep "ikerian-dev-raw-data" | head -1 | awk '{print $3}')
+  #         PROC_BUCKET=$(aws s3 ls | grep "ikerian-dev-processed-data" | head -1 | awk '{print $3}')
+          
+  #         if [ -n "$RAW_BUCKET" ]; then
+  #           echo "✅ Raw data bucket exists: $RAW_BUCKET"
+  #         else
+  #           echo "❌ Raw data bucket not found"
+  #           exit 1
+  #         fi
+          
+  #         if [ -n "$PROC_BUCKET" ]; then
+  #           echo "✅ Processed data bucket exists: $PROC_BUCKET"
+  #         else
+  #           echo "❌ Processed data bucket not found"
+  #           exit 1
+  #         fi
+          
+  #         # Check Lambda function
+  #         if aws lambda get-function --function-name ikerian-dev-data-processor >/dev/null 2>&1; then
+  #           echo "✅ Lambda function exists: ikerian-dev-data-processor"
+  #         else
+  #           echo "❌ Lambda function not found"
+  #           exit 1
+  #         fi
+          
+  #         echo "🎉 Development deployment verified successfully!"
+
+  #     - name: Upload Terraform Plan
+  #       uses: actions/upload-artifact@v3
+  #       if: always()
+  #       with:
+  #         name: terraform-plan-dev
+  #         path: tfplan
+
+  #     - name: Notify Deployment Success
+  #       if: success()
+  #       run: |
+  #         echo "🚀 Development deployment completed successfully!"
+  #         echo "Environment: Development"
+  #         echo "Branch: ${{ github.ref_name }}"
+  #         echo "Commit: ${{ github.sha }}"
+
+  # # Production environment deployment
+  # deploy-prod:
+  #   name: Deploy to Production
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+  #   environment: production
+  #   needs: []
+    
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+
+  #     - name: Configure AWS credentials
+  #       uses: aws-actions/configure-aws-credentials@v4
+  #       with:
+  #         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+  #         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+  #         aws-region: ${{ env.AWS_REGION }}
+
+  #     - name: Setup Terraform
+  #       uses: hashicorp/setup-terraform@v3
+  #       with:
+  #         terraform_version: ${{ env.TF_VERSION }}
+
+  #     - name: Setup Python
+  #       uses: actions/setup-python@v4
+  #       with:
+  #         python-version: ${{ env.PYTHON_VERSION }}
+
+  #     - name: Install Make
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y make
+
+  #     - name: Install Python dependencies
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install boto3
+
+  #     - name: Select Terraform Workspace
+  #       run: terraform workspace select prod || terraform workspace new prod
+  #       working-directory: .
+
+  #     - name: Terraform Format and Init
+  #       run: make fmt && make init
+  #       working-directory: .
+
+  #     - name: Terraform Plan
+  #       run: make plan
+  #       working-directory: .
+
+  #     - name: Terraform Apply
+  #       run: make apply
+  #       working-directory: .
+
+  #     - name: Verify Deployment
+  #       run: |
+  #         echo "🔍 Verifying production deployment..."
+          
+  #         # Check S3 buckets
+  #         RAW_BUCKET=$(aws s3 ls | grep "ikerian-prod-raw-data" | head -1 | awk '{print $3}')
+  #         PROC_BUCKET=$(aws s3 ls | grep "ikerian-prod-processed-data" | head -1 | awk '{print $3}')
+          
+  #         if [ -n "$RAW_BUCKET" ]; then
+  #           echo "✅ Raw data bucket exists: $RAW_BUCKET"
+  #         else
+  #           echo "❌ Raw data bucket not found"
+  #           exit 1
+  #         fi
+          
+  #         if [ -n "$PROC_BUCKET" ]; then
+  #           echo "✅ Processed data bucket exists: $PROC_BUCKET"
+  #         else
+  #           echo "❌ Processed data bucket not found"
+  #           exit 1
+  #         fi
+          
+  #         # Check Lambda function
+  #         if aws lambda get-function --function-name ikerian-prod-data-processor >/dev/null 2>&1; then
+  #           echo "✅ Lambda function exists: ikerian-prod-data-processor"
+  #         else
+  #           echo "❌ Lambda function not found"
+  #           exit 1
+  #         fi
+          
+  #         echo "🎉 Production deployment verified successfully!"
+
+  #     - name: Upload Terraform Plan
+  #       uses: actions/upload-artifact@v3
+  #       if: always()
+  #       with:
+  #         name: terraform-plan-prod
+  #         path: tfplan
+
+  #     - name: Create Release
+  #       if: success()
+  #       uses: actions/create-release@v1
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       with:
+  #         tag_name: v${{ github.run_number }}
+  #         release_name: Production Release v${{ github.run_number }}
+  #         body: |
+  #           🚀 Production deployment completed successfully!
+            
+  #           **Environment:** Production
+  #           **Branch:** ${{ github.ref_name }}
+  #           **Commit:** ${{ github.sha }}
+  #           **Deployed by:** ${{ github.actor }}
+            
+  #           **Resources Deployed:**
+  #           - S3 Raw Data Bucket: ikerian-prod-raw-data-*
+  #           - S3 Processed Data Bucket: ikerian-prod-processed-data-*
+  #           - Lambda Function: ikerian-prod-data-processor
+  #           - IAM Roles and Policies
+  #           - CloudWatch Log Groups
+            
+  #           **Next Steps:**
+  #           - Monitor CloudWatch logs for any issues
+  #           - Test the data pipeline with sample data
+  #           - Set up monitoring alerts if needed
+  #         draft: false
+  #         prerelease: false
+
+  #     - name: Notify Deployment Success
+  #       if: success()
+  #       run: |
+  #         echo "🚀 Production deployment completed successfully!"
+  #         echo "Environment: Production"
+  #         echo "Branch: ${{ github.ref_name }}"
+  #         echo "Commit: ${{ github.sha }}"
+  #         echo "Release: v${{ github.run_number }}"
+
+  # # Cleanup job for failed deployments
+  # cleanup:
+  #   name: Cleanup on Failure
+  #   runs-on: ubuntu-latest
+  #   if: failure()
+  #   needs: [deploy-dev, deploy-prod]
+    
+  #   steps:
+  #     - name: Notify Deployment Failure
+  #       run: |
+  #         echo "❌ Deployment failed!"
+  #         echo "Environment: ${{ github.ref_name == 'main' && 'Production' || 'Development' }}"
+  #         echo "Branch: ${{ github.ref_name }}"
+  #         echo "Commit: ${{ github.sha }}"
+  #         echo "Please check the logs for details."

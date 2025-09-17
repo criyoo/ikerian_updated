@@ -1,0 +1,4 @@
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: '1.11.4'
+  PYTHON_VERSION: '3.9'

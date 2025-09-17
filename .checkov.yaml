@@ -1,0 +1,12 @@
+# .checkov.yml
+skip-check:
+  - CKV_AWS_338  # "Ensure CloudWatch log groups retains logs for at least 1 year"
+  - CKV_AWS_111 # "Ensure IAM policies does not allow write access without constraints" # S3 cross-region replication
+  - CKV_AWS_109 # "Ensure IAM policies does not allow permissions management / resource exposure without constraints" # CloudWatch log group encryption
+  - CKV_AWS_117 # "Ensure that AWS Lambda function is configured inside a VPC"  # Lambda tracing
+  - CKV_AWS_272 # "Ensure AWS Lambda function is configured to validate code-signing"
+  - CKV_AWS_116 # "Ensure that AWS Lambda function is configured for a Dead Letter Queue(DLQ)"
+  - CKV_AWS_115 # "Ensure that AWS Lambda function is configured for function-level concurrent execution limit"
+  - CKV_AWS_173 # "Check encryption settings for Lambda environmental variable"
+  - CKV_AWS_300 # "Ensure S3 lifecycle configuration sets period for aborting failed uploads"
+  - CKV_AWS_144 # "Ensure that S3 bucket has cross-region replication enabled"

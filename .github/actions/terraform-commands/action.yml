@@ -1,0 +1,22 @@
+name: 'Terraform Commands'
+description: 'Common Terraform operations using Makefile'
+inputs:
+  commands:
+    description: 'Make commands to run (space-separated)'
+    required: true
+  working-directory:
+    description: 'Working directory'
+    required: false
+    default: '.'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Run Terraform Commands
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        for cmd in ${{ inputs.commands }}; do
+          echo "Running: make $cmd"
+          make $cmd
+        done

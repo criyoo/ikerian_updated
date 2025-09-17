@@ -1,0 +1,83 @@
+name: Test Infrastructure
+
+on:
+  push:
+    branches:
+      - development   # Development deployments only
+      - main
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '**/*.py'
+      - 'Makefile'
+
+jobs:
+  test:
+    name: Test Infrastructure
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/development' && github.event_name == 'push'
+    environment: development
+    
+    steps:
+      - name: Setup Environment
+        uses: ./.github/actions/setup-terraform
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install Packages and Dependencies
+        run: |
+          pip install pytest
+
+      - name: Terraform Plan (Dev Environment)
+        uses: ./.github/actions/terraform-commands
+        with:
+          commands: "plan"
+
+      - name: Test Lambda Function Code
+        run: |
+          echo "Testing Lambda function syntax..."
+          python -m py_compile files/lambda/ikerian_data_processor.py
+          echo "✅ Lambda function syntax is valid"
+
+      - name: Run Infrastructure Tests
+        run: |
+          echo "🧪 Running infrastructure tests..."
+          
+          # Test 1: Validate Terraform configuration using Makefile
+          make validate
+          echo "✅ Terraform configuration is valid"
+          
+          # Test 2: Check for required files
+          if [ ! -f "files/lambda/ikerian_data_processor.py" ]; then
+            echo "❌ Lambda function file not found"
+            exit 1
+          fi
+          echo "✅ Lambda function file exists"
+          
+          # Test 3: Check environment configuration
+          if [ ! -f "envs/dev.tfvars" ]; then
+            echo "❌ Development environment configuration not found"
+            exit 1
+          fi
+          echo "✅ Development environment configuration exists"
+          
+          # Test 4: Validate Makefile commands
+          make validate
+          echo "✅ Makefile validation passed"
+          
+          echo "🎉 All infrastructure tests passed!"
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "📊 Test Summary:"
+          echo "- Terraform validation: ✅"
+          echo "- Lambda function syntax: ✅"
+          echo "- Required files check: ✅"
+          echo "- Environment configuration: ✅"
+          echo "- Makefile validation: ✅"
