@@ -2,12 +2,10 @@ name: Deploy Ikerian AWS Data Pipeline
 
 on:
   push:
-    branches:
-      - development   # Development deployments only
+    branches: [development, feature/*]
   pull_request:
     types: [opened, synchronize, closed]
-    branches:
-      - main      # Production deployments only
+    branches: [main]
     paths:
       - '**/*.tf'
       - '**/*.tfvars'

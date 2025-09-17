@@ -5,11 +5,17 @@ on:
     # Run security scans daily at 2 AM UTC
     - cron: '0 2 * * *'
   push:
-    branches:
-      - development
+    branches: [development, feature/*]
   pull_request:
-    branches:
-      - main
+    types: [opened, synchronize, closed]
+    branches: [main]
+    paths:
+      - '**/*.tf'
+      - '**/*.tfvars'
+      - '**/*.py'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'Makefile'
 
 
 jobs:

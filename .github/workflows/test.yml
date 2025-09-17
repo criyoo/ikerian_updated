@@ -2,16 +2,16 @@ name: Test Infrastructure
 
 on:
   push:
-    branches:
-      - development   # Development deployments only
-      - main
+    branches: [development]
   pull_request:
-    branches:
-      - main
+    types: [opened, synchronize, closed]
+    branches: [main]
     paths:
       - '**/*.tf'
       - '**/*.tfvars'
       - '**/*.py'
+      - '**/*.yml'
+      - '**/*.yaml'
       - 'Makefile'
 
 jobs:
