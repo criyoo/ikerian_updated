@@ -16,7 +16,7 @@ module "iam" {
   raw_data_bucket       = module.s3_buckets.raw_data_bucket
   processed_data_bucket = module.s3_buckets.processed_data_bucket
   cloudwatch_log_group  = module.cloudwatch.cloudwatch_log_group
-  kms_key_arn           = module.kms.kms_key_arn
+  kms_key_arn           = module.kms.kms_key.arn
 }
 
 # S3 Buckets
@@ -25,7 +25,7 @@ module "s3_buckets" {
 
   project_name = var.project_name
   environment  = var.environment
-  kms_key_id   = module.kms.kms_key_id
+  kms_key_id   = module.kms.kms_key.key_id
 }
 
 # Lambda Function
@@ -46,5 +46,5 @@ module "cloudwatch" {
 
   project_name = var.project_name
   environment  = var.environment
-  kms_key_id   = module.kms.kms_key_id
+  kms_key_id   = module.kms.kms_key.key_id
 }
